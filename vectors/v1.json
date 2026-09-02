@@ -1,0 +1,619 @@
+{
+  "version": 1,
+  "about": "Conformance vectors for wire-level Postgres policy enforcement. Each case is one policy profile and one statement, with the decision an implementation must reach. Generated from PgBeam's policy engine; see README.md.",
+  "profiles": [
+    {
+      "id": "read_only",
+      "description": "Reads only. Every write and DDL is refused before it reaches the database.",
+      "access_mode": "read_only"
+    },
+    {
+      "id": "read_only_allow_delete",
+      "description": "Read-only, with DELETE in the statement allowlist. The access mode is a ceiling: the allowlist narrows within it and cannot lift it, so the DELETE is still refused.",
+      "access_mode": "read_only",
+      "statement_allow": [
+        "select",
+        "delete"
+      ]
+    },
+    {
+      "id": "read_write_allow_select",
+      "description": "Read-write, narrowed to SELECT by the statement allowlist. This is where the allowlist does its work.",
+      "access_mode": "read_write",
+      "statement_allow": [
+        "select"
+      ]
+    },
+    {
+      "id": "read_only_masked",
+      "description": "Reads only, with users.email redacted. Masking is keyed on the source relation and column, not on the output name.",
+      "access_mode": "read_only",
+      "masking_rules": [
+        {
+          "table": "users",
+          "column": "email",
+          "kind": "redact"
+        }
+      ]
+    },
+    {
+      "id": "allowlist_users",
+      "description": "Read-write, restricted to the users table. An absent allowlist means no restriction, so the restriction is the presence of this list.",
+      "access_mode": "read_write",
+      "table_allowlist": [
+        "users",
+        "public.users"
+      ]
+    },
+    {
+      "id": "denylist_secrets",
+      "description": "Read-write everywhere except secrets. A denylist takes precedence over an allowlist.",
+      "access_mode": "read_write",
+      "table_denylist": [
+        "secrets",
+        "public.secrets"
+      ]
+    },
+    {
+      "id": "read_write_masked",
+      "description": "Read-write with users.email redacted, so write projections (RETURNING) are evaluable.",
+      "access_mode": "read_write",
+      "masking_rules": [
+        {
+          "table": "users",
+          "column": "email",
+          "kind": "redact"
+        }
+      ]
+    },
+    {
+      "id": "row_filtered_tenant",
+      "description": "Read-only with a tenant predicate ANDed into every reference to users.",
+      "access_mode": "read_only",
+      "row_filters": [
+        {
+          "table": "users",
+          "predicate": "tenant_id = 42"
+        }
+      ]
+    },
+    {
+      "id": "migration_safety_block",
+      "description": "Read-write with lock-taking DDL refused rather than warned about.",
+      "access_mode": "read_write",
+      "migration_safety": "block"
+    },
+    {
+      "id": "capped_writes",
+      "description": "Read-write with a hard ceiling on affected rows. Statements whose effect cannot be bounded from the statement alone are refused.",
+      "access_mode": "read_write",
+      "max_affected_rows": 10
+    }
+  ],
+  "cases": [
+    {
+      "id": "read_only/select",
+      "profile": "read_only",
+      "sql": "SELECT id FROM users",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/update",
+      "profile": "read_only",
+      "sql": "UPDATE users SET email = 'x' WHERE id = 1",
+      "expect": {
+        "verdict": "block",
+        "rule": "read_only",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/insert",
+      "profile": "read_only",
+      "sql": "INSERT INTO users (email) VALUES ('a')",
+      "expect": {
+        "verdict": "block",
+        "rule": "read_only",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/delete",
+      "profile": "read_only",
+      "sql": "DELETE FROM users WHERE id = 1",
+      "expect": {
+        "verdict": "block",
+        "rule": "read_only",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/ddl",
+      "profile": "read_only",
+      "sql": "DROP TABLE users",
+      "expect": {
+        "verdict": "block",
+        "rule": "destructive_ddl",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/explain",
+      "profile": "read_only",
+      "sql": "EXPLAIN SELECT id FROM users",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/data_modifying_cte",
+      "profile": "read_only",
+      "note": "A write hidden in a WITH clause is still a write. This one is also whereless, so it meets the whereless-write floor first and that is the rule it reports; read_only/bounded_data_modifying_cte is the case that isolates the access mode.",
+      "sql": "WITH d AS (DELETE FROM users RETURNING id) SELECT * FROM d",
+      "expect": {
+        "verdict": "block",
+        "rule": "whereless_write",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/bounded_data_modifying_cte",
+      "profile": "read_only",
+      "note": "The same write hidden in a WITH clause, bounded by a WHERE so no other floor reaches it first. An implementation that classifies the statement by its outer SELECT allows this one.",
+      "sql": "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING id) SELECT * FROM d",
+      "expect": {
+        "verdict": "block",
+        "rule": "read_only",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "read_only/select_for_update",
+      "profile": "read_only",
+      "note": "A locking read takes a row lock, so it is not a read for policy purposes.",
+      "sql": "SELECT id FROM users FOR UPDATE",
+      "expect": {
+        "verdict": "block",
+        "rule": "locking_select",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "statement_allow/write_refused_under_read_only",
+      "profile": "read_only_allow_delete",
+      "note": "DELETE is in the statement allowlist and the credential is read-only, so it is still refused. The access mode is a ceiling, not a default the allowlist can raise.",
+      "sql": "DELETE FROM users WHERE id = 1",
+      "expect": {
+        "verdict": "block",
+        "rule": "read_only",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "statement_allow/narrows_under_read_write",
+      "profile": "read_write_allow_select",
+      "note": "The same list doing the work it can do: under read-write, a kind absent from a non-empty allowlist is refused.",
+      "sql": "DELETE FROM users WHERE id = 1",
+      "expect": {
+        "verdict": "block",
+        "rule": "statement_not_allowed",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "fail_closed/empty",
+      "profile": "read_only",
+      "sql": "",
+      "expect": {
+        "verdict": "block",
+        "rule": "empty",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "fail_closed/comment_only",
+      "profile": "read_only",
+      "sql": "-- nothing here",
+      "expect": {
+        "verdict": "block",
+        "rule": "empty",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "fail_closed/truncated",
+      "profile": "read_only",
+      "sql": "SELECT * FROM",
+      "expect": {
+        "verdict": "block",
+        "rule": "parse_error",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "fail_closed/garbage",
+      "profile": "read_only",
+      "sql": "\u0000\u0001not sql at all",
+      "expect": {
+        "verdict": "block",
+        "rule": "empty",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "fail_closed/batch_with_one_blocked",
+      "profile": "read_only",
+      "note": "A batch is refused whole when any statement in it is refused.",
+      "sql": "SELECT 1; DROP TABLE users",
+      "expect": {
+        "verdict": "block",
+        "rule": "destructive_ddl",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "allowlist/allowed_relation",
+      "profile": "allowlist_users",
+      "sql": "SELECT id FROM users",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "allowlist/other_relation",
+      "profile": "allowlist_users",
+      "sql": "SELECT id FROM secrets",
+      "expect": {
+        "verdict": "block",
+        "rule": "table_not_allowed",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "allowlist/join_reaches_outside",
+      "profile": "allowlist_users",
+      "sql": "SELECT u.id FROM users u JOIN secrets s ON s.id = u.id",
+      "expect": {
+        "verdict": "block",
+        "rule": "table_not_allowed",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "allowlist/schema_qualified",
+      "profile": "allowlist_users",
+      "note": "Bare and schema-qualified spellings of the same relation both match.",
+      "sql": "SELECT id FROM public.users",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "allowlist/case_insensitive",
+      "profile": "allowlist_users",
+      "sql": "SELECT id FROM USERS",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "denylist/denied_relation",
+      "profile": "denylist_secrets",
+      "sql": "SELECT * FROM secrets",
+      "expect": {
+        "verdict": "block",
+        "rule": "table_denied",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "denylist/other_relation",
+      "profile": "denylist_secrets",
+      "sql": "SELECT * FROM users",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "denylist/subquery_reaches_denied",
+      "profile": "denylist_secrets",
+      "note": "A denied relation in a scalar subquery is still a reference to it.",
+      "sql": "SELECT (SELECT token FROM secrets LIMIT 1)",
+      "expect": {
+        "verdict": "block",
+        "rule": "table_denied",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/direct_column",
+      "profile": "read_only_masked",
+      "sql": "SELECT email FROM users",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/aliased_column",
+      "profile": "read_only_masked",
+      "sql": "SELECT email AS contact FROM users",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "contact:redact",
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/star",
+      "profile": "read_only_masked",
+      "sql": "SELECT * FROM users",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/qualified_star",
+      "profile": "read_only_masked",
+      "sql": "SELECT u.* FROM users u",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/whole_row_to_json",
+      "profile": "read_only_masked",
+      "note": "Wrapping the row in JSON must not launder the masked column out.",
+      "sql": "SELECT row_to_json(u) FROM users u",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact",
+          "row_to_json:null"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/set_operation",
+      "profile": "read_only_masked",
+      "note": "A masked column reached through a UNION branch is still masked.",
+      "sql": "SELECT email FROM users UNION ALL SELECT email FROM users",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/cte",
+      "profile": "read_only_masked",
+      "note": "Renaming through a CTE does not detach the column from its source.",
+      "sql": "WITH w AS (SELECT email FROM users) SELECT * FROM w",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/scalar_subquery",
+      "profile": "read_only_masked",
+      "sql": "SELECT (SELECT email FROM users LIMIT 1) AS e",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "e:null",
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/unprojected_column_still_reported",
+      "profile": "read_only_masked",
+      "note": "The statement does not project email, and the engine still reports it as masked. Over-reporting is the safe direction and an implementation that returns a plain allow here is not wrong, but it is not identical either, so the case is published rather than hidden.",
+      "sql": "SELECT id FROM users",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/returning_on_write",
+      "profile": "read_write_masked",
+      "note": "A write's RETURNING projection is a read and is masked like one.",
+      "sql": "UPDATE users SET id = id WHERE id = 1 RETURNING email",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "row_filter/simple_select",
+      "profile": "row_filtered_tenant",
+      "sql": "SELECT id FROM users",
+      "expect": {
+        "verdict": "row-filter",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": true
+      }
+    },
+    {
+      "id": "row_filter/existing_where",
+      "profile": "row_filtered_tenant",
+      "sql": "SELECT id FROM users WHERE id = 1",
+      "expect": {
+        "verdict": "row-filter",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": true
+      }
+    },
+    {
+      "id": "row_filter/unfiltered_relation",
+      "profile": "row_filtered_tenant",
+      "sql": "SELECT id FROM orders",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "row_filter/join",
+      "profile": "row_filtered_tenant",
+      "note": "Every reference to the filtered relation is filtered, including in a join.",
+      "sql": "SELECT u.id FROM users u JOIN orders o ON o.user_id = u.id",
+      "expect": {
+        "verdict": "row-filter",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": true
+      }
+    },
+    {
+      "id": "migration/create_index_without_concurrently",
+      "profile": "migration_safety_block",
+      "note": "Takes an exclusive lock on a live table, which is the classic agent outage.",
+      "sql": "CREATE INDEX idx_users_email ON users (email)",
+      "expect": {
+        "verdict": "block",
+        "rule": "migration_block",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "migration/create_index_concurrently",
+      "profile": "migration_safety_block",
+      "sql": "CREATE INDEX CONCURRENTLY idx_users_email ON users (email)",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "migration/add_nullable_column",
+      "profile": "migration_safety_block",
+      "sql": "ALTER TABLE users ADD COLUMN nickname text",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "max_affected/whereless_delete",
+      "profile": "capped_writes",
+      "note": "A write with no WHERE clause cannot be bounded and is refused independently of the cap.",
+      "sql": "DELETE FROM users",
+      "expect": {
+        "verdict": "block",
+        "rule": "whereless_write",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "max_affected/bounded_update",
+      "profile": "capped_writes",
+      "sql": "UPDATE users SET email = 'x' WHERE id = 1",
+      "expect": {
+        "verdict": "allow",
+        "rule": "ok",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "max_affected/data_modifying_cte",
+      "profile": "capped_writes",
+      "note": "The cap counts command tags, and a data-modifying CTE does not produce one it can read.",
+      "sql": "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING id) SELECT count(*) FROM d",
+      "expect": {
+        "verdict": "block",
+        "rule": "max_affected_rows_writable_cte",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    }
+  ]
+}
