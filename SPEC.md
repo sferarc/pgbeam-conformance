@@ -148,5 +148,3 @@ have no vector:
 An implementation reading this corpus should not conclude that a masking pass
 means masked values cannot be reached by schema changes. It means the statements
 listed here reach the listed verdicts.
-
-<!-- Reverse-sync delta probe. Removed in the next commit. -->
