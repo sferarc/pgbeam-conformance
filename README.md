@@ -89,5 +89,3 @@ for each case:
 `vectors/v1.json` carries a `version` field. Cases are added freely; a case's
 expectation changes only alongside a version bump, so a conformance report
 against v1 stays meaningful.
-
-<!-- Round-trip test of the return path. Reverted immediately; if you are reading this, say so. -->
