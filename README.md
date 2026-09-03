@@ -42,8 +42,8 @@ Cases are grouped by what they exercise:
 
 The verdict distribution is deliberately mixed (21 block, 10 mask, 3 row-filter,
 10 allow). A corpus that only blocks proves nothing about over-blocking, and one
-that only allows proves nothing about enforcement. A test in the generating
-repository fails if any of the three groups empties out.
+that only allows proves nothing about enforcement. A test fails if any of the three
+groups empties out.
 
 ## These are one engine's answers
 
@@ -89,3 +89,17 @@ for each case:
 `vectors/v1.json` carries a `version` field. Cases are added freely; a case's
 expectation changes only alongside a version bump, so a conformance report
 against v1 stays meaningful.
+
+## Contributing
+
+Issues and pull requests are welcome here. An issue is the right place to start
+for a bug, a wrong doc, or a missing capability; say what you ran, what
+happened, what you expected, and which version you were on.
+
+Do not open a public issue for a suspected security vulnerability. Email
+security@pgbeam.com, or report it privately from this repository's Security
+tab.
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE).
