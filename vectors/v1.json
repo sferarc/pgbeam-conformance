@@ -471,6 +471,18 @@
       }
     },
     {
+      "id": "mask/values_list",
+      "profile": "read_only_masked",
+      "note": "A VALUES list is a projection whose outputs PostgreSQL names column1, column2 and so on, so no mask rule points at them and a masked value reaching one would be returned in the clear. Refused rather than masked, which also closes the spelling that answers through whether the statement errored.",
+      "sql": "VALUES ((SELECT email FROM users WHERE id = 1))",
+      "expect": {
+        "verdict": "block",
+        "rule": "masked_column_expression",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
       "id": "mask/unprojected_column_still_reported",
       "profile": "read_only_masked",
       "note": "The statement does not project email, and the engine still reports it as masked. Over-reporting is the safe direction and an implementation that returns a plain allow here is not wrong, but it is not identical either, so the case is published rather than hidden.",
