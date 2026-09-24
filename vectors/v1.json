@@ -483,6 +483,32 @@
       }
     },
     {
+      "id": "mask/alias_column_list",
+      "profile": "read_only_masked",
+      "note": "An alias column list on a relation reference renames that relation's columns BY POSITION, so the masked column reaches the client under a name no mask rule points at and the statement itself names nothing masked. Refused rather than masked, because an engine reading SQL without a catalog cannot tell which alias covers which source column.",
+      "sql": "SELECT x FROM users AS u(x)",
+      "expect": {
+        "verdict": "block",
+        "rule": "masked_column_rename",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/relation_alias_still_masked",
+      "profile": "read_only_masked",
+      "note": "The boundary of the case above: an alias that renames the RELATION alone moves no column name, so the masked column is still named and still returned masked.",
+      "sql": "SELECT email FROM users AS u",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
       "id": "mask/unprojected_column_still_reported",
       "profile": "read_only_masked",
       "note": "The statement does not project email, and the engine still reports it as masked. Over-reporting is the safe direction and an implementation that returns a plain allow here is not wrong, but it is not identical either, so the case is published rather than hidden.",
