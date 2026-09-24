@@ -29,7 +29,9 @@ Cases are grouped by what they exercise:
 | `migration/` | 3 | Lock-taking DDL against its safe equivalent. |
 | `max_affected/` | 3 | Refusing a write whose row count cannot be bounded from the statement alone, and permitting one that can. |
 
-The verdict distribution is deliberately mixed (21 block, 10 mask, 3 row-filter, 10 allow). A corpus that only blocks proves nothing about over-blocking, and one that only allows proves nothing about enforcement. A test fails if any of the three groups empties out.
+The verdict distribution is deliberately mixed (22 block, 9 mask, 3 row-filter, 10 allow). A corpus that only blocks proves nothing about over-blocking, and one that only allows proves nothing about enforcement. A test fails if any of the three groups empties out, and another fails if these four counts stop matching the corpus.
+
+The group a case sits in is not its verdict. `mask/whole_row_to_json` is in the `mask/` group because masking is what it exercises, and its verdict is `block`: an expression wrapped round a masked value is refused rather than nulled, for the reason `SPEC.md` gives under pass 2.
 
 ## These are one engine's answers
 

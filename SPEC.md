@@ -56,12 +56,15 @@ Omitted fields carry the "absent" meaning in the table above, which is not alway
 
 The name to the left of the colon is not always a column the client sees. The list is produced by two passes and holds the union of both.
 
+Neither pass runs on a statement that was refused: a `block` carries an empty `masked_columns`, because nothing is masked when nothing is evaluated. `mask/whole_row_to_json` reports `[]` for that reason.
+
 **Pass 1, the floor.** Every masked column of every relation the statement touches is listed under its own name, carrying the rule's `kind`, whether or not the column reaches the output at all. This is why `mask/unprojected_column_still_reported` reports `email:redact` for `SELECT id FROM users`: `users` is touched, so its masked column is named.
 
 **Pass 2, provenance.** Each output column whose expression references a masked source column is also listed, under its **output** name:
 
 - a bare reference, aliased or not, keeps the rule's kind, so `SELECT email AS contact FROM users` adds `contact:redact`.
-- any other expression cannot be shown to be a value-preserving projection, so it fails closed and the whole output column is nulled, giving kind `null` regardless of what the rule says. `SELECT row_to_json(u) FROM users u` adds `row_to_json:null`, and `SELECT email || '' FROM users` adds `?column?:null`, taking the name PostgreSQL gives an unnamed expression.
+- a projection that wraps nothing but still cannot be shown to be value-preserving fails closed: the whole output column is nulled, giving kind `null` regardless of what the rule says. `mask/scalar_subquery` is the case, `SELECT (SELECT email FROM users LIMIT 1) AS e`, which adds `e:null`. A bare whole-row reference is nulled the same way, under the relation's own alias: `SELECT u FROM users u` adds `u:null`. Wrapping that same reference in anything moves it to the bullet below, so `SELECT u::text FROM users u` is blocked. Neither spelling has a vector of its own beyond `mask/scalar_subquery`.
+- an expression wrapped **round** a masked value does not reach pass 2 at all, because the statement is refused: verdict `block`, rule `masked_column_expression`. `SELECT row_to_json(u) FROM users u` is the published case (`mask/whole_row_to_json`), and `SELECT email || '' FROM users` is the same shape. Nulling the cell is not sufficient for these: the expression is still evaluated on the raw value, so whether it errors answers a question the agent wrote into the predicate, one bit per query, and no mask can redact that.
 
 Two consequences to build to. A profile whose only rule is `kind: redact` still produces `:null` entries, because `null` here is the fail-closed outcome of pass 2 rather than a mask kind anyone configured. And a single output column can contribute two entries: `mask/aliased_column` reports `["contact:redact", "email:redact"]`, the alias from pass 2 and the source name from pass 1.
 

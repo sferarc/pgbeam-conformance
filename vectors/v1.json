@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "about": "Conformance vectors for wire-level Postgres policy enforcement. Each case is one policy profile and one statement, with the decision an implementation must reach. Generated from PgBeam's policy engine; see README.md.",
   "profiles": [
     {
@@ -419,15 +419,12 @@
     {
       "id": "mask/whole_row_to_json",
       "profile": "read_only_masked",
-      "note": "Wrapping the row in JSON must not launder the masked column out.",
+      "note": "Wrapping the row in JSON must not launder the masked column out. Refused rather than masked: an expression over a masked value is evaluated on the raw row, and whether it errors is an answer no mask can redact.",
       "sql": "SELECT row_to_json(u) FROM users u",
       "expect": {
-        "verdict": "mask",
-        "rule": "ok",
-        "masked_columns": [
-          "email:redact",
-          "row_to_json:null"
-        ],
+        "verdict": "block",
+        "rule": "masked_column_expression",
+        "masked_columns": [],
         "row_filtered": false
       }
     },
