@@ -12,7 +12,7 @@ A corpus makes the claim checkable. Run it, publish where you differ, and the ar
 
 ## What is in here
 
-- `vectors/v1.json` : the corpus. 44 cases across 10 profiles.
+- `vectors/v1.json` : the corpus. 49 cases across 10 profiles.
 - `SPEC.md` : what each field means and how to run the corpus.
 - `LICENSE` : Apache-2.0.
 
@@ -24,12 +24,12 @@ Cases are grouped by what they exercise:
 | `statement_allow/` | 2 | That the statement allowlist narrows within the access mode and never widens past it. |
 | `fail_closed/` | 5 | Empty, comment-only, truncated, and non-SQL input, plus a batch containing one refused statement. |
 | `allowlist/` `denylist/` | 8 | Relation matching: bare against schema-qualified, case, joins, subqueries, and denylist precedence. |
-| `mask/` | 10 | Column masking keyed on the source relation, through aliases, stars, set operations, CTEs, whole-row wrapping, and `RETURNING`. |
+| `mask/` | 15 | Column masking keyed on the source relation, through aliases, stars, set operations, CTEs, whole-row wrapping, positional renames on a relation reference and on a join, and `RETURNING`. |
 | `row_filter/` | 4 | Predicate injection, including into a statement that already has a `WHERE` and into every reference in a join. |
 | `migration/` | 3 | Lock-taking DDL against its safe equivalent. |
 | `max_affected/` | 3 | Refusing a write whose row count cannot be bounded from the statement alone, and permitting one that can. |
 
-The verdict distribution is deliberately mixed (24 block, 10 mask, 3 row-filter, 10 allow). A corpus that only blocks proves nothing about over-blocking, and one that only allows proves nothing about enforcement. A test fails if any of the three groups empties out, and another fails if these four counts stop matching the corpus.
+The verdict distribution is deliberately mixed (25 block, 11 mask, 3 row-filter, 10 allow). A corpus that only blocks proves nothing about over-blocking, and one that only allows proves nothing about enforcement. A test fails if any of the three groups empties out, and another fails if these four counts stop matching the corpus. The per-group counts in the table above and the corpus size stated under "What is in here" are held to the corpus by a test as well.
 
 The group a case sits in is not its verdict. `mask/whole_row_to_json` is in the `mask/` group because masking is what it exercises, and its verdict is `block`: an expression wrapped round a masked value is refused rather than nulled, for the reason `SPEC.md` gives under pass 2.
 

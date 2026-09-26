@@ -509,6 +509,32 @@
       }
     },
     {
+      "id": "mask/join_alias_column_list",
+      "profile": "read_only_masked",
+      "note": "The same positional rename one level out. PostgreSQL lets a parenthesized join take an alias with a column list, and that list renames the JOINED output by position, which is the arms' catalog columns in order. An engine that scans relation references alone misses it, because the reference to the masked table inside the join carries no column list of its own.",
+      "sql": "SELECT a FROM (users u CROSS JOIN orders o) AS j(a, b, c, d)",
+      "expect": {
+        "verdict": "block",
+        "rule": "masked_column_rename",
+        "masked_columns": [],
+        "row_filtered": false
+      }
+    },
+    {
+      "id": "mask/join_alias_without_column_list",
+      "profile": "read_only_masked",
+      "note": "The boundary of the case above: a join alias with no column list renames the joined relation and no column, so the masked column keeps its name and is still returned masked.",
+      "sql": "SELECT email FROM (users u CROSS JOIN orders o) AS j",
+      "expect": {
+        "verdict": "mask",
+        "rule": "ok",
+        "masked_columns": [
+          "email:redact"
+        ],
+        "row_filtered": false
+      }
+    },
+    {
       "id": "mask/unprojected_column_still_reported",
       "profile": "read_only_masked",
       "note": "The statement does not project email, and the engine still reports it as masked. Over-reporting is the safe direction and an implementation that returns a plain allow here is not wrong, but it is not identical either, so the case is published rather than hidden.",
