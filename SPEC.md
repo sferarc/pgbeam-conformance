@@ -92,7 +92,7 @@ Everything whose answer depends on state a single statement cannot carry:
 
 - per-credential query and egress budgets
 - human-in-the-loop approvals
-- write-mode routing (rollback and sandbox branches)
+- write-mode routing (rollback)
 - the affected-row cap's own runtime count, as opposed to the statements it refuses because it could never count them
 - honeytokens and other project-level overlays
 
